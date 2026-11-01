@@ -273,6 +273,23 @@ Call `refreshAccess()` when the page loads before restoring authenticated UI. Do
 
 For multiple tabs, serialize refresh and login/logout across tabs with a shared Web Lock (`navigator.locks`) so requests read the latest cookie only after acquiring the lock. Broadcast logout with `BroadcastChannel`, clear each tab's in-memory access token and stop pending refresh/retry work during logout. A per-tab `refreshInFlight` promise alone does not coordinate tabs. If the target browser lacks the chosen coordination APIs, handle rotation conflicts by signing in again. These frontend behaviors are integration guidance, not frontend code shipped in this backend repository.
 
+## Deploy on Render
+
+In the backend web service's Settings, use these commands:
+
+- Build Command: `corepack pnpm run build:render`
+- Start Command: `corepack pnpm start:prod`
+
+The `build:render` script installs both runtime and development dependencies before compiling, even when `NODE_ENV=production`. Nest CLI and TypeScript are build tools in `devDependencies`; omitting them causes `nest: not found`. Installation uses the committed lockfile and must succeed before compilation starts.
+
+Set `NODE_VERSION=24` and `NODE_ENV=production` in Render's Environment settings. Supply the required database, frontend, JWT, OTP and SMTP settings from the environment-variable table above. Render supplies `PORT`; the app reads it at startup. Local `.env.local` changes are not deployed because the file is ignored by Git.
+
+Use an HTTPS `FRONTEND_ORIGIN` without a trailing slash. Set `SWAGGER_ENABLED=false`, or enable it with an HTTPS `SWAGGER_ORIGIN` matching the public backend origin. Atlas connection strings using `mongodb+srv://` must not include a hostname port; percent-encode special characters in credentials.
+
+Save the service settings and deploy the commit containing this script. For an existing service, pushing a new script does not change its saved Build Command automatically. If an old dependency cache still causes `nest: not found`, use Render's **Clear build cache & deploy** action after updating the command.
+
+Render Free web services block outbound SMTP ports 25, 465 and 587. OTP delivery through those ports requires a service plan that permits the provider's SMTP port, or a mail integration using HTTPS. See [Render's Free service limitations](https://render.com/docs/free#other-limitations).
+
 ## Tests and build
 
 ```powershell
