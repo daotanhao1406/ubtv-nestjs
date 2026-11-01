@@ -1,12 +1,24 @@
 import { Module } from '@nestjs/common'
-import { AppController } from './app.controller'
-import { AppService } from './app.service'
-import { MoviesModule } from './movies/movies.module'
+import { AppController } from './controllers/app.controller'
+import { AppService } from './services/app.service'
 import { MongooseModule } from '@nestjs/mongoose'
-import { EpisodesModule } from './episodes/episodes.module'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { AuthModule } from './auth/auth.module'
+import { validateEnvironment } from './config/environment'
 
 @Module({
-  imports: [MongooseModule.forRoot('mongodb://localhost:27017/movie_db'), MoviesModule, EpisodesModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env.local', '.env'],
+      validate: validateEnvironment,
+    }),
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({ uri: config.getOrThrow<string>('MONGODB_URI') }),
+    }),
+    AuthModule,
+  ],
 
   controllers: [AppController],
   providers: [AppService],
