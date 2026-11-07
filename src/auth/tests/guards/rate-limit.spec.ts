@@ -28,17 +28,20 @@ describe('auth route rate limits', () => {
     vi.useRealTimers()
   })
 
-  it.each(['login', 'register', 'verifyEmail'] as const)('limits %s to 10 requests/minute per IP', async route => {
-    for (let i = 0; i < 10; i++) expect(await guard.canActivate(context(route))).toBe(true)
-    await expect(guard.canActivate(context(route))).rejects.toMatchObject({ status: 429 })
-    expect(await guard.canActivate(context(route, '127.0.0.2'))).toBe(true)
-    await vi.advanceTimersByTimeAsync(61000)
-    expect(await guard.canActivate(context(route))).toBe(true)
-  })
+  it.each(['login', 'register', 'verifyEmail', 'verifyResetPassword', 'resetPassword'] as const)(
+    'limits %s to 10 requests/minute per IP',
+    async route => {
+      for (let i = 0; i < 10; i++) expect(await guard.canActivate(context(route))).toBe(true)
+      await expect(guard.canActivate(context(route))).rejects.toMatchObject({ status: 429 })
+      expect(await guard.canActivate(context(route, '127.0.0.2'))).toBe(true)
+      await vi.advanceTimersByTimeAsync(61000)
+      expect(await guard.canActivate(context(route))).toBe(true)
+    },
+  )
 
-  it('limits resend verification to 5 requests/minute/IP', async () => {
-    for (let i = 0; i < 5; i++) expect(await guard.canActivate(context('resendVerification'))).toBe(true)
-    await expect(guard.canActivate(context('resendVerification'))).rejects.toMatchObject({ status: 429 })
+  it.each(['resendVerification', 'forgotPassword'] as const)('limits %s to 5 requests/minute/IP', async route => {
+    for (let i = 0; i < 5; i++) expect(await guard.canActivate(context(route))).toBe(true)
+    await expect(guard.canActivate(context(route))).rejects.toMatchObject({ status: 429 })
   })
 
   it('allows 60 refresh requests and keeps endpoint counters separate', async () => {

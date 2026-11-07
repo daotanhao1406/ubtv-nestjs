@@ -133,6 +133,9 @@ Browsers set `Origin` automatically. Postman/curl callers must supply it explici
 | `POST /auth/register`            | JSON `{ name, email, password }`      | `201`, pending user and `verificationEmailSent`; does not log in |
 | `POST /auth/verify-email`        | JSON `{ email, code }`                | `200`, `{ emailVerified: true, message }`; call login next       |
 | `POST /auth/resend-verification` | JSON `{ email }`                      | `200`, generic `{ message }` acknowledgement                     |
+| `POST /auth/forgot-password`     | JSON `{ email }`                      | `200`, generic `{ message }` acknowledgement                     |
+| `POST /auth/verify-reset-password` | JSON `{ email, code }`              | `200`, `{ resetToken, expiresIn: 600 }`                           |
+| `POST /auth/reset-password`      | JSON `{ email, resetToken, password }` | `200`, `{ message }`; invalidates old access/refresh credentials |
 | `POST /auth/login`               | JSON `{ email, password }`            | `200`, access token/public user and refresh cookie               |
 | `POST /auth/refresh`             | Refresh cookie; no body required      | `200`, new access token/public user and rotated refresh cookie   |
 | `GET /auth/me`                   | `Authorization: Bearer <accessToken>` | `200`, public user                                               |
@@ -157,7 +160,7 @@ Public users contain only `{ id, name, email, emailVerified }`. Registration add
 
 Validation/OTP failures return `400`, duplicate email `409`, invalid credentials/tokens `401`, unverified email `403` with `code=EMAIL_NOT_VERIFIED`, and rate limits `429`, using standard NestJS exception responses. Login checks credentials before exposing verification status; an unknown email and a wrong password still receive the same error. Password hashes, OTP/HMAC state and refresh tokens are never returned in JSON. Successful auth responses have `Cache-Control: no-store`.
 
-Login/register/verify-email allow 10 requests/minute/IP per endpoint; refresh allows 60 and resend-verification allows 5. Counters are in process memory, so this configuration targets one API instance. Express uses the direct peer IP by default. If deploying behind a proxy, configure Express `trust proxy` for your actual trusted proxy topology before relying on per-client limits; do not blindly trust arbitrary forwarded headers.
+Login/register/verify-email/verify-reset-password/reset-password allow 10 requests/minute/IP per endpoint; refresh allows 60, while resend-verification and forgot-password allow 5. Counters are in process memory, so this configuration targets one API instance. Express uses the direct peer IP by default. If deploying behind a proxy, configure Express `trust proxy` for your actual trusted proxy topology before relying on per-client limits; do not blindly trust arbitrary forwarded headers.
 
 ## Email verification lifecycle
 
@@ -166,6 +169,23 @@ Login/register/verify-email allow 10 requests/minute/IP per endpoint; refresh al
 - Each challenge expires after 10 minutes, permits five incorrect attempts and can be confirmed once. Success stores `emailVerifiedAt` and clears the entire OTP subdocument.
 - Sends are at least 60 seconds apart per user, enforced by a conditional MongoDB update. A resend replaces the challenge and resets its expiry/attempt budget. Verification and failed-attempt writes bind the challenge ID/hash so an in-flight operation cannot confirm or decrement a replacement challenge.
 - Unknown, already verified and cooldown accounts receive the same resend acknowledgement. SMTP failures also keep this generic response; it does not promise delivery. A failed send keeps the cooldown, so wait 60 seconds before retrying. Database failures remain server errors.
+
+## Password reset flow
+
+These endpoints work in Swagger and Postman with the same Origin and `X-App-Request: 1` headers as the other auth POSTs. No login or Bearer token is required.
+
+1. Call `POST /auth/forgot-password` with `{ "email": "your-address@example.com" }`. An existing account receives a six-digit OTP. Unknown addresses, cooldowns and SMTP failures return the same acknowledgement; it does not promise delivery.
+2. Call `POST /auth/verify-reset-password` with `{ "email": "your-address@example.com", "code": "012345" }`. The code must be a string, including leading zeros. Read `data.resetToken` and `data.expiresIn` from the response envelope. Verification consumes the OTP and authorizes only a password reset; it does not issue access or refresh tokens.
+3. Call `POST /auth/reset-password` with `{ "email": "your-address@example.com", "resetToken": "<token-from-step-2>", "password": "your new password" }`. The password follows the same policy as registration. Confirm the new password in the frontend before submitting. Keep the reset token only in memory; do not put it in URLs, logs or persistent browser storage.
+4. Clear any in-memory access token and call the normal login endpoint with the new password. The reset endpoint clears this browser's refresh cookie. A previously unverified account still needs the separate email-verification flow before login.
+
+Reset codes expire after 10 minutes and allow at most five incorrect attempts. Request another code through `forgot-password` after at least 60 seconds; each new send invalidates both the previous code and any reset token. Concurrent sends are limited by a conditional MongoDB update. Registration codes and reset codes are independent; reset HMACs include a purpose prefix and use the existing `EMAIL_OTP_SECRET`, so no new environment variable is required.
+
+After successful code verification, the reset token contains 32 random bytes, expires after 10 minutes, is bound to the email/account and can be used once. Only its SHA-256 hash is stored. The final conditional update checks expiry, changes the password hash, removes reset state and increments `passwordVersion` atomically. Concurrent resets have one winner. Bad input and invalid, expired, exhausted or used codes/tokens return `400`; database failures remain server errors.
+
+Access JWTs and refresh sessions carry the password version from their login. After a reset, old access tokens and refresh sessions fail with `401` on subsequent checks, including credentials from a login or refresh that raced with the reset. Legacy credentials without a version count as version zero until the first reset; no migration is required. Requests already authorized before the reset can finish. Old refresh-session records remain until their existing TTL cleanup.
+
+The account receives a confirmation email after a successful reset, without credentials. Notification delivery failure does not undo the password change. SMTP is synchronous, as with registration: the generic acknowledgement hides account status in the response body, but response timing can differ for actual sends. This implementation has no durable mail queue or delivery retries. Failed OTP sends retain the cooldown; retry the first step after 60 seconds.
 
 ## Postman verification flow
 
@@ -303,4 +323,4 @@ corepack pnpm start:prod
 
 Tests use Vitest with SWC decorator metadata. Unit tests instantiate services/controllers/guards with mocks: no HTTP server, MongoDB connection, real SMTP delivery or e2e tests. Bcryptjs and JWT verification are exercised directly. OTP race tests simulate conditional database queries; they do not establish real MongoDB atomicity. Actual SMTP delivery, browser CORS/cookie behavior and multi-tab integration remain integration concerns. Runtime build remains the Nest CLI/TypeScript build; Vitest configuration is ESM without changing the app's CommonJS output.
 
-Roles, social login, password changes and account recovery are outside this version.
+Roles, social login and authenticated password changes are outside this version.

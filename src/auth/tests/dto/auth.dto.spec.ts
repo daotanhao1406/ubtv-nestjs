@@ -4,6 +4,8 @@ import { LoginDto } from '../../dto/login.dto'
 import { RegisterDto } from '../../dto/register.dto'
 import { VerifyEmailDto } from '../../dto/verify-email.dto'
 import { EmailDto } from '../../dto/email.dto'
+import { ResetPasswordDto } from '../../dto/reset-password.dto'
+import { VerifyPasswordResetDto } from '../../dto/verify-password-reset.dto'
 
 const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
 const valid = { name: '  Nguyen An  ', email: '  AN@EXAMPLE.COM  ', password: 'a secure password' }
@@ -66,6 +68,48 @@ describe('auth DTO validation', () => {
   it.each([123456, '12345', '1234567', '12345a', ' 012345', null])('rejects a malformed OTP %j', async code => {
     await expect(
       pipe.transform({ email: valid.email, code }, { type: 'body', metatype: VerifyEmailDto }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('validates reset OTPs independently while retaining leading zeros', async () => {
+    const verify = (code: unknown) =>
+      pipe.transform({ email: valid.email, code }, { type: 'body', metatype: VerifyPasswordResetDto })
+    expect(await verify('012345')).toEqual({ email: 'an@example.com', code: '012345' })
+    await expect(verify(123456)).rejects.toBeInstanceOf(BadRequestException)
+    await expect(verify('12345')).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('normalizes reset emails and preserves passwords exactly', async () => {
+    expect(
+      await pipe.transform(
+        { email: valid.email, password: '  new password  ', resetToken: 'A'.repeat(43) },
+        { type: 'body', metatype: ResetPasswordDto },
+      ),
+    ).toEqual({
+      email: 'an@example.com',
+      password: '  new password  ',
+      resetToken: 'A'.repeat(43),
+    })
+  })
+
+  it.each([
+    { resetToken: undefined },
+    { resetToken: 123456 },
+    { resetToken: 'A'.repeat(42) },
+    { resetToken: '+'.repeat(43) },
+    { password: 'short' },
+    { password: 'a'.repeat(73) },
+    { password: '🔐'.repeat(19) },
+    { email: { $ne: null } },
+    { code: '012345' },
+    { passwordVersion: 100 },
+    { emailVerified: true },
+  ])('rejects invalid reset input %j', async overrides => {
+    await expect(
+      pipe.transform(
+        { email: valid.email, password: valid.password, resetToken: 'A'.repeat(43), ...overrides },
+        { type: 'body', metatype: ResetPasswordDto },
+      ),
     ).rejects.toBeInstanceOf(BadRequestException)
   })
 })

@@ -7,6 +7,7 @@ import { AuthController } from '../../controllers/auth.controller'
 import { AuthService } from '../../services/auth.service'
 import { AuthenticatedRequest } from '../../interfaces/auth.interface'
 import { EmailVerificationService } from '../../services/email-verification.service'
+import { PasswordResetService } from '../../services/password-reset.service'
 
 describe('AuthController and refresh cookies', () => {
   const user = { id: '507f1f77bcf86cd799439011', name: 'An', email: 'an@example.com', emailVerified: true }
@@ -16,10 +17,12 @@ describe('AuthController and refresh cookies', () => {
   const auth = { register: vi.fn(), login: vi.fn(), refresh: vi.fn(), logout: vi.fn() }
   const cookies = new AuthCookiesService(new ConfigService({ NODE_ENV: 'production' }))
   const verification = { verify: vi.fn(), resend: vi.fn() }
+  const passwordReset = { request: vi.fn(), verify: vi.fn(), reset: vi.fn() }
   const controller = new AuthController(
     auth as unknown as AuthService,
     cookies,
     verification as unknown as EmailVerificationService,
+    passwordReset as unknown as PasswordResetService,
   )
   const response = { cookie: vi.fn(), clearCookie: vi.fn() }
   const res = response as unknown as Response
@@ -60,6 +63,33 @@ describe('AuthController and refresh cookies', () => {
       path: '/auth',
       expires: result.expiresAt,
     })
+  })
+
+  it('handles reset steps without logging in, and clears the cookie only after a successful reset', async () => {
+    passwordReset.request.mockResolvedValue({ message: 'acknowledged' })
+    passwordReset.verify.mockResolvedValue({ resetToken: 'grant', expiresIn: 600 })
+    passwordReset.reset.mockResolvedValue({ message: 'password reset' })
+    expect(await controller.forgotPassword({ email: user.email })).toEqual({ message: 'acknowledged' })
+    expect(passwordReset.request).toHaveBeenCalledWith(user.email)
+    expect(await controller.verifyResetPassword({ email: user.email, code: '012345' })).toEqual({
+      resetToken: 'grant',
+      expiresIn: 600,
+    })
+    expect(passwordReset.verify).toHaveBeenCalledWith(user.email, '012345')
+    expect(response.clearCookie).not.toHaveBeenCalled()
+    expect(await controller.resetPassword({ ...credentials, resetToken: 'grant' }, res)).toEqual({
+      message: 'password reset',
+    })
+    expect(passwordReset.reset).toHaveBeenCalledWith(user.email, 'grant', credentials.password)
+    expect(response.clearCookie).toHaveBeenCalledOnce()
+    expect(response.cookie).not.toHaveBeenCalled()
+    expect(auth.login).not.toHaveBeenCalled()
+    response.clearCookie.mockClear()
+    passwordReset.reset.mockRejectedValue(new Error('invalid grant'))
+    await expect(controller.resetPassword({ ...credentials, resetToken: 'grant' }, res)).rejects.toThrow(
+      'invalid grant',
+    )
+    expect(response.clearCookie).not.toHaveBeenCalled()
   })
 
   it('reads the refresh cookie and preserves the original expiration when replacing it', async () => {

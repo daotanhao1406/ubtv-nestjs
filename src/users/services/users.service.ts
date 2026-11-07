@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { User, UserDocument } from '../schemas/user.schema'
 import { EmailVerification } from '../schemas/email-verification.schema'
+import { PasswordReset } from '../schemas/password-reset.schema'
 
 interface CreateUserInput {
   name: string
@@ -71,6 +72,80 @@ export class UsersService {
         $inc: { 'emailVerification.attemptsRemaining': -1 },
       })
       .exec()
+  }
+
+  findForPasswordReset(email: string): Promise<UserDocument | null> {
+    return this.users.findOne({ email: email.trim().toLowerCase() }).select('+passwordReset').exec()
+  }
+
+  claimPasswordReset(userId: string, challenge: PasswordReset, now: Date): Promise<UserDocument | null> {
+    return this.users
+      .findOneAndUpdate(
+        {
+          _id: userId,
+          $or: [{ 'passwordReset.nextSendAt': { $lte: now } }, { 'passwordReset.nextSendAt': { $exists: false } }],
+        },
+        { $set: { passwordReset: challenge } },
+        { new: true, runValidators: true },
+      )
+      .exec()
+  }
+
+  async recordFailedPasswordReset(userId: string, challenge: PasswordReset): Promise<void> {
+    await this.users
+      .updateOne(this.activePasswordResetFilter(userId, challenge), {
+        $inc: { 'passwordReset.attemptsRemaining': -1 },
+      })
+      .exec()
+  }
+
+  async authorizePasswordReset(
+    userId: string,
+    challenge: PasswordReset,
+    resetTokenHash: string,
+    resetExpiresAt: Date,
+  ): Promise<boolean> {
+    const result = await this.users
+      .updateOne(
+        this.activePasswordResetFilter(userId, challenge),
+        {
+          $set: { 'passwordReset.resetTokenHash': resetTokenHash, 'passwordReset.resetExpiresAt': resetExpiresAt },
+          $unset: { 'passwordReset.codeHash': 1 },
+        },
+        { runValidators: true },
+      )
+      .exec()
+    return result.modifiedCount === 1
+  }
+
+  async resetPassword(email: string, resetTokenHash: string, passwordHash: string): Promise<boolean> {
+    const result = await this.users
+      .updateOne(
+        {
+          email: email.trim().toLowerCase(),
+          'passwordReset.resetTokenHash': resetTokenHash,
+          'passwordReset.resetExpiresAt': { $gt: new Date() },
+        },
+        {
+          $set: { passwordHash },
+          $inc: { passwordVersion: 1 },
+          $unset: { passwordReset: 1 },
+        },
+        { runValidators: true },
+      )
+      .exec()
+    return result.modifiedCount === 1
+  }
+
+  private activePasswordResetFilter(userId: string, challenge: PasswordReset) {
+    return {
+      _id: userId,
+      'passwordReset.challengeId': challenge.challengeId,
+      'passwordReset.codeHash': challenge.codeHash,
+      'passwordReset.expiresAt': { $gt: new Date() },
+      'passwordReset.attemptsRemaining': { $gt: 0 },
+      'passwordReset.resetTokenHash': { $exists: false },
+    }
   }
 
   private activeChallengeFilter(userId: string, challenge: EmailVerification, now: Date) {

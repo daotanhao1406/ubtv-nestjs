@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { HydratedDocument } from 'mongoose'
 import { EmailVerification, EmailVerificationSchema } from './email-verification.schema'
+import { PasswordReset, PasswordResetSchema } from './password-reset.schema'
 
 export type UserDocument = HydratedDocument<User>
 
@@ -14,6 +15,13 @@ export class User {
 
   @Prop({ type: String, required: true, select: false })
   passwordHash: string
+
+  // Incremented in the same write as a password reset to revoke all old credentials.
+  @Prop({ type: Number, default: 0, min: 0 })
+  passwordVersion: number
+
+  @Prop({ type: PasswordResetSchema, select: false })
+  passwordReset?: PasswordReset
 
   @Prop({ type: Boolean, required: true, default: false })
   emailVerified: boolean

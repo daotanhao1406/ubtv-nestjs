@@ -43,6 +43,26 @@ describe('MailService and SMTP options (mock transport only)', () => {
     await expect(service.sendEmailVerification('an@example.com', '012345')).rejects.toThrow('delivery failed')
   })
 
+  it('sends a distinct reset email with the OTP and ten-minute expiry', async () => {
+    await service.sendPasswordReset('an@example.com', '012345')
+    const message = transport.sendMail.mock.calls[0][0]
+    expect(message.subject).toBe('UBTV - Đặt lại mật khẩu')
+    expect(message.to).toEqual({ address: 'an@example.com', name: '' })
+    expect(message.text).toContain('012345')
+    expect(message.html).toContain('012345')
+    expect(message.text).toContain('10 phút')
+    expect(message.html).toContain('10 phút')
+    expect(JSON.stringify(message)).not.toContain('test-password')
+  })
+
+  it('notifies about a completed reset without including credentials', async () => {
+    await service.sendPasswordResetConfirmation('an@example.com')
+    const message = transport.sendMail.mock.calls[0][0]
+    expect(message.subject).toBe('UBTV - Mật khẩu đã được đặt lại')
+    expect(message.text).toContain('Các phiên đăng nhập cũ đã bị vô hiệu hóa')
+    expect(JSON.stringify(message)).not.toContain('test-password')
+  })
+
   it('sets finite timeouts and keeps SMTP logging disabled', () => {
     expect(createSmtpOptions(config)).toMatchObject({
       port: 587,
