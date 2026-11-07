@@ -9,10 +9,10 @@ import { RefreshSession } from '../schemas/refresh-session.schema'
 export class RefreshSessionsService {
   constructor(@InjectModel(RefreshSession.name) private readonly sessions: Model<RefreshSession>) {}
 
-  async create(userId: string) {
+  async create(userId: string, passwordVersion = 0) {
     const refreshToken = this.generateToken()
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS)
-    await this.sessions.create({ userId, tokenHash: this.hash(refreshToken), expiresAt })
+    await this.sessions.create({ userId, tokenHash: this.hash(refreshToken), expiresAt, passwordVersion })
     return { refreshToken, expiresAt }
   }
 
@@ -28,7 +28,12 @@ export class RefreshSessionsService {
       )
       .exec()
     if (!session) return null
-    return { userId: session.userId.toString(), refreshToken, expiresAt: session.expiresAt }
+    return {
+      userId: session.userId.toString(),
+      refreshToken,
+      expiresAt: session.expiresAt,
+      passwordVersion: session.passwordVersion ?? 0,
+    }
   }
 
   async revoke(token?: string) {

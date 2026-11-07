@@ -16,7 +16,7 @@ export class AccessTokenGuard implements CanActivate {
     const match = /^Bearer ([^\s]+)$/i.exec(request.get('Authorization') ?? '')
     if (!match) throw new UnauthorizedException('A Bearer access token is required')
 
-    let payload: { sub?: unknown; exp?: unknown }
+    let payload: { sub?: unknown; exp?: unknown; passwordVersion?: unknown }
     try {
       payload = await this.jwt.verifyAsync(match[1], { algorithms: ['HS256'] })
       if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') throw new Error('Invalid claims')
@@ -24,7 +24,9 @@ export class AccessTokenGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired access token')
     }
     const user = await this.users.findById(payload.sub as string)
-    if (!user) throw new UnauthorizedException('Invalid or expired access token')
+    if (!user || (payload.passwordVersion ?? 0) !== (user.passwordVersion ?? 0)) {
+      throw new UnauthorizedException('Invalid or expired access token')
+    }
     requireVerifiedEmail(user)
     request.user = { id: user._id.toString(), name: user.name, email: user.email, emailVerified: true }
     return true

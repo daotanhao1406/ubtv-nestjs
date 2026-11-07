@@ -87,4 +87,24 @@ describe('AccessTokenGuard (real JWT verification)', () => {
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException)
     expect(request.user).toBeUndefined()
   })
+
+  it.each([undefined, 0, 1])('rejects old access tokens after reset (version %j)', async passwordVersion => {
+    request.get.mockReturnValue(`Bearer ${await jwt.signAsync({ sub: id, passwordVersion })}`)
+    users.findById.mockResolvedValue({ _id: new Types.ObjectId(id), emailVerified: true, passwordVersion: 2 })
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException)
+    expect(request.user).toBeUndefined()
+  })
+
+  it('accepts new tokens after a reset and still attaches only public fields', async () => {
+    users.findById.mockResolvedValue({
+      _id: new Types.ObjectId(id),
+      name: 'An',
+      email: 'an@example.com',
+      emailVerified: true,
+      passwordVersion: 2,
+    })
+    request.get.mockReturnValue(`Bearer ${await jwt.signAsync({ sub: id, passwordVersion: 2 })}`)
+    expect(await guard.canActivate(context)).toBe(true)
+    expect(request.user).not.toHaveProperty('passwordVersion')
+  })
 })

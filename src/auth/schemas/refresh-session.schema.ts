@@ -12,6 +12,9 @@ export class RefreshSession {
   @Prop({ type: String, required: true, unique: true })
   tokenHash: string
 
+  @Prop({ type: Number, default: 0, min: 0 })
+  passwordVersion: number
+
   @Prop({ type: Date, required: true })
   expiresAt: Date
 }

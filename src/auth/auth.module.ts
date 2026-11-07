@@ -15,6 +15,7 @@ import { RefreshSession, RefreshSessionSchema } from './schemas/refresh-session.
 import { createJwtOptions } from './config/jwt.config'
 import { MailModule } from '../mail/mail.module'
 import { EmailVerificationService } from './services/email-verification.service'
+import { PasswordResetService } from './services/password-reset.service'
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { EmailVerificationService } from './services/email-verification.service'
     PasswordService,
     RefreshSessionsService,
     EmailVerificationService,
+    PasswordResetService,
     AuthOriginGuard,
     AccessTokenGuard,
     ThrottlerGuard,

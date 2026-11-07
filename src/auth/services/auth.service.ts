@@ -34,7 +34,7 @@ export class AuthService {
     if (!user || !matches) throw new UnauthorizedException('Invalid email or password')
     requireVerifiedEmail(user)
     const data = await this.issueAccessToken(user)
-    const session = await this.sessions.create(user._id.toString())
+    const session = await this.sessions.create(user._id.toString(), user.passwordVersion ?? 0)
     return { data, ...session }
   }
 
@@ -42,7 +42,7 @@ export class AuthService {
     const session = await this.sessions.rotate(token)
     if (!session) throw new UnauthorizedException('Invalid or expired refresh token')
     const user = await this.users.findById(session.userId)
-    if (!user) {
+    if (!user || (session.passwordVersion ?? 0) !== (user.passwordVersion ?? 0)) {
       await this.sessions.revoke(session.refreshToken)
       throw new UnauthorizedException('Invalid or expired refresh token')
     }
@@ -60,7 +60,7 @@ export class AuthService {
 
   private async issueAccessToken(user: UserDocument) {
     return {
-      accessToken: await this.jwt.signAsync({ sub: user._id.toString() }),
+      accessToken: await this.jwt.signAsync({ sub: user._id.toString(), passwordVersion: user.passwordVersion ?? 0 }),
       expiresIn: ACCESS_TOKEN_TTL_SECONDS,
       user: this.toPublicUser(user),
     }

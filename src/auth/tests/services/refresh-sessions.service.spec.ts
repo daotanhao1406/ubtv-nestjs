@@ -30,6 +30,7 @@ describe('RefreshSessionsService', () => {
       userId: userId.toString(),
       tokenHash: hash(first.refreshToken),
       expiresAt: first.expiresAt,
+      passwordVersion: 0,
     })
     expect(JSON.stringify(model.create.mock.calls)).not.toContain(first.refreshToken)
   })
@@ -47,6 +48,15 @@ describe('RefreshSessionsService', () => {
       { $set: { tokenHash: hash(result.refreshToken) } },
       { new: true },
     )
+  })
+
+  it('preserves the login password version during rotation', async () => {
+    const created = await service.create(userId.toString(), 3)
+    expect(model.create).toHaveBeenCalledWith(expect.objectContaining({ passwordVersion: 3 }))
+    model.findOneAndUpdate.mockReturnValue({
+      exec: vi.fn().mockResolvedValue({ userId, expiresAt: created.expiresAt, passwordVersion: 3 }),
+    })
+    expect(await service.rotate(created.refreshToken)).toMatchObject({ passwordVersion: 3 })
   })
 
   it('rejects expired or consumed tokens when the conditional update finds no document', async () => {

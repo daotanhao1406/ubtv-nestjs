@@ -76,8 +76,8 @@ describe('AuthService', () => {
       ...session,
     })
     expect(passwords.verify).toHaveBeenCalledWith(credentials.password, user.passwordHash)
-    expect(jwt.signAsync).toHaveBeenCalledWith({ sub: publicUser.id })
-    expect(sessions.create).toHaveBeenCalledWith(publicUser.id)
+    expect(jwt.signAsync).toHaveBeenCalledWith({ sub: publicUser.id, passwordVersion: 0 })
+    expect(sessions.create).toHaveBeenCalledWith(publicUser.id, 0)
     sessions.create.mockRejectedValue(new Error('storage failure'))
     await expect(service.login(credentials)).rejects.toThrow('storage failure')
   })
@@ -139,5 +139,34 @@ describe('AuthService', () => {
     expect(await service.logout('current-token')).toEqual({ message: 'Logged out' })
     expect(sessions.revoke).toHaveBeenCalledWith('current-token')
     await expect(service.logout()).resolves.toEqual({ message: 'Logged out' })
+  })
+
+  it('rejects refresh sessions from before the reset, including ones rotated concurrently', async () => {
+    users.findById.mockResolvedValue({ ...user, passwordVersion: 1 })
+    await expect(service.refresh('old-token')).rejects.toBeInstanceOf(UnauthorizedException)
+    expect(sessions.revoke).toHaveBeenCalledWith(session.refreshToken)
+    expect(jwt.signAsync).not.toHaveBeenCalled()
+  })
+
+  it('binds login and refresh to the current password version', async () => {
+    users.findByEmail.mockResolvedValue({ ...user, passwordVersion: 2 })
+    users.findById.mockResolvedValue({ ...user, passwordVersion: 2 })
+    sessions.rotate.mockResolvedValue({ ...session, userId: publicUser.id, passwordVersion: 2 })
+    await service.login(credentials)
+    expect(sessions.create).toHaveBeenCalledWith(publicUser.id, 2)
+    expect(jwt.signAsync).toHaveBeenCalledWith({ sub: publicUser.id, passwordVersion: 2 })
+    await expect(service.refresh('new-token')).resolves.toHaveProperty('data.accessToken')
+  })
+
+  it('does not upgrade an in-flight old-password login to the new password version', async () => {
+    // findByEmail is a snapshot; a reset during hashing must leave the resulting credentials at version zero.
+    passwords.verify.mockImplementation(async () => {
+      users.findById.mockResolvedValue({ ...user, passwordVersion: 1 })
+      return true
+    })
+    await service.login(credentials)
+    expect(sessions.create).toHaveBeenCalledWith(publicUser.id, 0)
+    expect(jwt.signAsync).toHaveBeenCalledWith({ sub: publicUser.id, passwordVersion: 0 })
+    await expect(service.refresh('old-token')).rejects.toBeInstanceOf(UnauthorizedException)
   })
 })
