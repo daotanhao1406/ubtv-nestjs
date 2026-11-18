@@ -162,6 +162,20 @@ Validation/OTP failures return `400`, duplicate email `409`, invalid credentials
 
 Login/register/verify-email/verify-reset-password/reset-password allow 10 requests/minute/IP per endpoint; refresh allows 60, while resend-verification and forgot-password allow 5. Counters are in process memory, so this configuration targets one API instance. Express uses the direct peer IP by default. If deploying behind a proxy, configure Express `trust proxy` for your actual trusted proxy topology before relying on per-client limits; do not blindly trust arbitrary forwarded headers.
 
+## User Library API
+
+These endpoints require `Authorization: Bearer <accessToken>`. Movie IDs are opaque string IDs from the external catalog; the backend stores IDs only. The frontend can hydrate each ID by calling the movie catalog API.
+
+| Endpoint | Input | Success |
+| --- | --- | --- |
+| `GET /users/me/library/favorites?page=1&pageSize=50` | Optional pagination; `pageSize` is 1–100 | `200`, favorite IDs in insertion order |
+| `POST /users/me/library/favorites` | JSON `{ "movieId": "<external-id>" }` | `200`, `{ movieId, isFavorite: true }` |
+| `DELETE /users/me/library/favorites?movieId=<external-id>` | Movie ID query parameter | `200`, `{ movieId, isFavorite: false }` |
+| `GET /users/me/library/watched?page=1&pageSize=50` | Optional pagination; `pageSize` is 1–100 | `200`, watched IDs most recently played first |
+| `POST /users/me/library/watched` | JSON `{ "movieId": "<external-id>" }` when playback starts | `200`, `{ movieId, watchedAt, expiresAt }` |
+
+List responses contain `{ movieIds, page, pageSize, total, totalPages }` inside the standard response envelope. Favorite updates are idempotent. Replaying a movie refreshes its six-calendar-month expiry and moves it to the top of watched history. Expired watched items are excluded immediately; MongoDB removes their records through a TTL index in the background.
+
 ## Email verification lifecycle
 
 - A new account starts with `emailVerified=false`; login, access-token guards and refresh require a verified user.

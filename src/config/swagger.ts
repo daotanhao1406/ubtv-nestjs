@@ -19,6 +19,7 @@ export function setupSwagger(app: INestApplication, config: ConfigService): void
     .setVersion('1.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'accessToken')
     .addTag('Auth', 'Register, verify email, reset password, log in, refresh, log out and inspect the current user')
+    .addTag('User Library', 'Manage favorite and recently watched external movie IDs for the current user')
     .build()
 
   const document = SwaggerModule.createDocument(app, documentConfig)

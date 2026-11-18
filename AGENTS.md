@@ -97,6 +97,7 @@ src/
 - `interfaces/` chứa interface chia sẻ, `types/` chứa type alias, `enums/` chứa enum, `constants/` chứa hằng và DI token, `utils/` chứa hàm thuần. Kiểu/hằng chỉ dùng cục bộ có thể giữ trong file sở hữu; không dùng các thư mục này để chứa nghiệp vụ đáng lẽ thuộc service.
 - Code nghiệp vụ thuộc feature sở hữu nghiệp vụ đó. Chỉ đưa vào `common/` khi nhiều feature thực sự cần và code không phụ thuộc một feature cụ thể.
 - Schema Mongoose đặt trong `schemas/`; không tạo schema mới trong `entities/`. Chỉ dùng `entities/` cho domain entity riêng nếu kiến trúc thực sự có nhu cầu đó.
+- Movie ID đến từ catalog bên ngoài là opaque string: giữ nguyên giá trị, không cast hoặc validate như MongoDB `ObjectId`. Chỉ dùng `ObjectId` cho ID document nội bộ của MongoDB.
 - Test của feature đặt trong `tests/`, chia thư mục con tương ứng với code được kiểm thử và dùng hậu tố `.spec.ts`; không đặt test cạnh file production. Cấu hình Vitest hiện tại `src/**/*.spec.ts` nhận được cấu trúc này.
 - Không tạo controller cho module chỉ cung cấp service nội bộ. Không tạo thư mục rỗng hoặc file placeholder để đủ cây mẫu.
 - Với feature mới, áp dụng cấu trúc này ngay. Khi tác vụ yêu cầu tổ chức lại feature hiện có, di chuyển file và cập nhật toàn bộ import, module metadata, đường dẫn test và tài liệu liên quan; giữ nguyên contract và hành vi API. Việc sửa logic cục bộ không yêu cầu tự di chuyển toàn bộ feature ngoài phạm vi tác vụ.
