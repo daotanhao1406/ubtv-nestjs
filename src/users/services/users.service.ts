@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common'
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { User, UserDocument } from '../schemas/user.schema'
@@ -14,6 +14,24 @@ interface CreateUserInput {
 @Injectable()
 export class UsersService {
   constructor(@InjectModel(User.name) private readonly users: Model<User>) {}
+
+  async listFavoriteMovieIds(userId: string, page: number, pageSize: number) {
+    const user = await this.users.findById(userId).select('favoriteMovieIds').lean().exec()
+    const movieIds = user?.favoriteMovieIds ?? []
+    const offset = (page - 1) * pageSize
+
+    return { movieIds: movieIds.slice(offset, offset + pageSize), total: movieIds.length }
+  }
+
+  async addFavoriteMovieId(userId: string, movieId: string): Promise<void> {
+    const result = await this.users.updateOne({ _id: userId }, { $addToSet: { favoriteMovieIds: movieId } }).exec()
+    if (result.matchedCount === 0) throw new NotFoundException('User not found')
+  }
+
+  async removeFavoriteMovieId(userId: string, movieId: string): Promise<void> {
+    const result = await this.users.updateOne({ _id: userId }, { $pull: { favoriteMovieIds: movieId } }).exec()
+    if (result.matchedCount === 0) throw new NotFoundException('User not found')
+  }
 
   async create(input: CreateUserInput): Promise<UserDocument> {
     try {

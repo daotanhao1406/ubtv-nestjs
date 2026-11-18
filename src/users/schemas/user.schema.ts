@@ -29,6 +29,10 @@ export class User {
   @Prop({ type: Date })
   emailVerifiedAt?: Date
 
+  // Movie IDs come from the external catalog and are opaque strings, not MongoDB ObjectIds.
+  @Prop({ type: [String], default: [] })
+  favoriteMovieIds: string[]
+
   // Hidden as a whole so OTP state cannot leak through ordinary user queries.
   @Prop({ type: EmailVerificationSchema, select: false })
   emailVerification?: EmailVerification

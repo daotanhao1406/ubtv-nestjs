@@ -4,6 +4,7 @@ import { AppService } from './services/app.service'
 import { MongooseModule } from '@nestjs/mongoose'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { AuthModule } from './auth/auth.module'
+import { UserLibraryModule } from './user-library/user-library.module'
 import { validateEnvironment } from './config/environment'
 
 @Module({
@@ -18,6 +19,7 @@ import { validateEnvironment } from './config/environment'
       useFactory: (config: ConfigService) => ({ uri: config.getOrThrow<string>('MONGODB_URI') }),
     }),
     AuthModule,
+    UserLibraryModule,
   ],
 
   controllers: [AppController],
